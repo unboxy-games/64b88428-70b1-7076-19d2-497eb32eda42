@@ -17,6 +17,7 @@ type Point = { x: number; y: number };
 type Dir = { x: number; y: number };
 type GameState = 'title' | 'playing' | 'dead';
 
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function lerpColor(a: number, b: number, t: number): number {
   const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
@@ -43,6 +44,9 @@ export class GameScene extends Phaser.Scene {
   private foodEaten = 0;
   private canRestart = false;
 
+  // Pause
+  private isPaused = false;
+
   // Timing
   private moveAccum = 0;
 
@@ -55,6 +59,7 @@ export class GameScene extends Phaser.Scene {
   // Overlay containers
   private titleContainer!: Phaser.GameObjects.Container;
   private gameOverContainer!: Phaser.GameObjects.Container;
+  private pauseContainer!: Phaser.GameObjects.Container;
   private finalScoreText!: Phaser.GameObjects.Text;
   private bestText!: Phaser.GameObjects.Text;
   private goRestartText!: Phaser.GameObjects.Text;
@@ -98,6 +103,10 @@ export class GameScene extends Phaser.Scene {
     // Overlays
     this.buildTitleScreen();
     this.buildGameOverScreen();
+    this.buildPauseScreen();
+
+    // Listen for pause requests from UIScene button
+    this.events.on('requestPause', this.togglePause, this);
 
     // Start HUD
     this.scene.launch('UIScene');
@@ -358,12 +367,33 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // ── Pause ──────────────────────────────────────────────────────────────────
+  togglePause(): void {
+    if (this.state !== 'playing') return;
+    this.isPaused = !this.isPaused;
+    this.pauseContainer.setVisible(this.isPaused);
+    if (!this.isPaused) {
+      // Reset accumulator so the snake doesn't lurch immediately on resume
+      this.moveAccum = 0;
+    }
+    this.events.emit('pauseChange', this.isPaused);
+  }
+
   // ── Input ──────────────────────────────────────────────────────────────────
   private handleKeydown(event: KeyboardEvent): void {
     if (this.state === 'title') { this.startGame(); return; }
     if (this.state === 'dead' && this.canRestart) { this.restartGame(); return; }
 
     if (this.state !== 'playing') return;
+
+    // Pause toggle
+    if (event.code === 'KeyP' || event.code === 'Escape') {
+      this.togglePause();
+      return;
+    }
+
+    // Ignore direction input while paused
+    if (this.isPaused) return;
 
     let nd: Dir | null = null;
     switch (event.code) {
@@ -389,6 +419,11 @@ export class GameScene extends Phaser.Scene {
       alpha: 0, duration: 300,
       onComplete: () => this.titleContainer.setVisible(false),
     });
+    // Clear any lingering pause state
+    this.isPaused = false;
+    this.pauseContainer.setVisible(false);
+    this.events.emit('pauseChange', false);
+
     this.state = 'playing';
     this.initSnake();
     this.placeFood();
@@ -505,9 +540,43 @@ export class GameScene extends Phaser.Scene {
     ]).setDepth(200).setVisible(false);
   }
 
+  private buildPauseScreen(): void {
+    const overlay = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.6).setOrigin(0);
+
+    // Pause icon — two big bars
+    const iconGfx = this.add.graphics();
+    iconGfx.fillStyle(0x2ecc71, 0.9);
+    iconGfx.fillRoundedRect(GAME_WIDTH / 2 - 28, GAME_HEIGHT / 2 - 90, 22, 60, 6);
+    iconGfx.fillRoundedRect(GAME_WIDTH / 2 + 6,  GAME_HEIGHT / 2 - 90, 22, 60, 6);
+
+    const pauseTitle = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 5, 'PAUSED', {
+      fontSize: '72px', fontFamily: 'monospace',
+      color: '#2ecc71', stroke: '#0b5426', strokeThickness: 4,
+    }).setOrigin(0.5);
+
+    // Gentle pulse on the title
+    this.tweens.add({
+      targets: pauseTitle, scaleX: 1.04, scaleY: 1.04,
+      duration: 1100, ease: 'Sine.easeInOut', yoyo: true, repeat: -1,
+    });
+
+    const resumeHint = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 65, 'PRESS  P  OR  ESC  TO RESUME', {
+      fontSize: '18px', fontFamily: 'monospace', color: '#bdc3c7',
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: resumeHint, alpha: 0.3, duration: 600,
+      ease: 'Sine.easeInOut', yoyo: true, repeat: -1,
+    });
+
+    this.pauseContainer = this.add.container(0, 0, [
+      overlay, iconGfx, pauseTitle, resumeHint,
+    ]).setDepth(500).setVisible(false);
+  }
+
   // ── Update ─────────────────────────────────────────────────────────────────
   update(_time: number, delta: number): void {
-    if (this.state !== 'playing') return;
+    if (this.state !== 'playing' || this.isPaused) return;
     this.moveAccum += delta;
     const interval = SPEEDS[this.level] ?? 65;
     if (this.moveAccum >= interval) {

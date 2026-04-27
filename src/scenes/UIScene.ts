@@ -11,6 +11,8 @@ export class UIScene extends Phaser.Scene {
   private speedDots: Phaser.GameObjects.Graphics[] = [];
   private speedText!: Phaser.GameObjects.Text;
   private currentLevel = 0;
+  private pauseBtn!: Phaser.GameObjects.Graphics;
+  private pauseBtnPaused = false;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -29,15 +31,35 @@ export class UIScene extends Phaser.Scene {
       stroke: '#7d6608', strokeThickness: 2,
     });
 
-    // ── Best (right) ──────────────────────────────────────────────────────
-    this.bestLabel = this.add.text(1260, 10, 'BEST', {
+    // ── Best (right, shifted left to give room for pause button) ─────────
+    this.bestLabel = this.add.text(1210, 10, 'BEST', {
       fontSize: '12px', fontFamily: 'monospace', color: '#7f8c8d',
     }).setOrigin(1, 0);
 
-    this.bestValue = this.add.text(1260, 26, '0', {
+    this.bestValue = this.add.text(1210, 26, '0', {
       fontSize: '28px', fontFamily: 'monospace', color: '#2ecc71',
       stroke: '#0b5426', strokeThickness: 2,
     }).setOrigin(1, 0);
+
+    // ── Pause button (far top-right) ──────────────────────────────────────
+    this.pauseBtn = this.add.graphics();
+    this.pauseBtn.setPosition(1252, 30);
+    this.drawPauseIcon(false);
+
+    // Make it interactive with a hit area
+    this.pauseBtn.setInteractive(
+      new Phaser.Geom.Rectangle(-20, -22, 44, 44),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    this.pauseBtn.on('pointerover', () => {
+      this.tweens.add({ targets: this.pauseBtn, scaleX: 1.15, scaleY: 1.15, duration: 100 });
+    });
+    this.pauseBtn.on('pointerout', () => {
+      this.tweens.add({ targets: this.pauseBtn, scaleX: 1, scaleY: 1, duration: 100 });
+    });
+    this.pauseBtn.on('pointerdown', () => {
+      game.events.emit('requestPause');
+    });
 
     // ── Speed indicator ───────────────────────────────────────────────────
     const maxLevels = 6;
@@ -75,6 +97,36 @@ export class UIScene extends Phaser.Scene {
         duration: 120, yoyo: true, ease: 'Back.easeOut',
       });
     });
+
+    game.events.on('pauseChange', (paused: boolean) => {
+      this.pauseBtnPaused = paused;
+      this.drawPauseIcon(paused);
+      // Pulse the button on toggle
+      this.tweens.add({
+        targets: this.pauseBtn, scaleX: 1.25, scaleY: 1.25,
+        duration: 100, yoyo: true, ease: 'Cubic.easeOut',
+      });
+    });
+  }
+
+  private drawPauseIcon(paused: boolean): void {
+    this.pauseBtn.clear();
+    // Background circle
+    this.pauseBtn.fillStyle(0x1a4a2e, 0.85);
+    this.pauseBtn.fillCircle(0, 0, 20);
+    this.pauseBtn.lineStyle(2, 0x2ecc71, 0.8);
+    this.pauseBtn.strokeCircle(0, 0, 20);
+
+    if (paused) {
+      // Play triangle (resume)
+      this.pauseBtn.fillStyle(0x2ecc71, 1);
+      this.pauseBtn.fillTriangle(-5, -10, -5, 10, 12, 0);
+    } else {
+      // Pause bars
+      this.pauseBtn.fillStyle(0x2ecc71, 1);
+      this.pauseBtn.fillRoundedRect(-9, -9, 7, 18, 2);
+      this.pauseBtn.fillRoundedRect(2,  -9, 7, 18, 2);
+    }
   }
 
   private updateSpeedDots(level: number): void {

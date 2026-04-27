@@ -25,8 +25,9 @@
 
 ## Game states
 - `title` — SNAKE title with pulsing scale, blinking "PRESS ANY KEY" prompt
-- `playing` — main game loop driven by delta accumulator
+- `playing` — main game loop driven by delta accumulator; can be paused via `isPaused` flag
 - `dead` — GAME OVER overlay fades in, shows score + best, blinking restart prompt; 800ms lock before any-key restarts
+- `paused` (flag, not a separate state string) — overlay shown, update loop halted, direction queue blocked
 
 ## Key files
 - `src/scenes/GameScene.ts` — all game logic, snake, food, overlays, saves
@@ -35,3 +36,4 @@
 
 ## Changes this session
 - Built entire game from scratch (new project)
+- Added pause system: P/Escape keyboard toggle, clickable pause button in HUD (top-right, green circle with ⏸/▶ icon), dark overlay with "PAUSED" text; snake movement halted while paused; button swaps to play icon when paused and back on resume
